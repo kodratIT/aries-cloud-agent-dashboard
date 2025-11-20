@@ -1,0 +1,29 @@
+version: "3.8"
+
+# Docker Compose untuk Dashboard saja
+# Menggunakan network dari parent docker-compose (appnet)
+# ACA-Py agent dan database sudah running di parent
+
+networks:
+  appnet:
+    external: true
+    name: ${APP_NETWORK_NAME:-appnet}
+
+services:
+  acapy-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - PUBLIC_ACAPY_API_URL=${PUBLIC_ACAPY_API_URL:-http://multi-agent:8021}
+    container_name: acapy-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      - PUBLIC_ACAPY_API_URL=${PUBLIC_ACAPY_API_URL:-http://multi-agent:8021}
+      - PORT=3000
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+    networks:
+      - appnet
+    restart: unless-stopped

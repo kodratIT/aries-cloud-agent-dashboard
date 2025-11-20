@@ -1,0 +1,28 @@
+version: "3.8"
+
+# Development override untuk docker-compose.yml
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+networks:
+  appnet:
+    external: true
+    name: ${APP_NETWORK_NAME:-appnet}
+
+services:
+  acapy-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./src:/app/src
+      - ./static:/app/static
+      - ./package.json:/app/package.json
+      - ./svelte.config.js:/app/svelte.config.js
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+    environment:
+      - NODE_ENV=development
+      - PUBLIC_ACAPY_API_URL=http://multi-agent:8021
+    command: yarn dev --host
+    ports:
+      - "5173:5173"  # Vite dev server

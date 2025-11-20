@@ -1,0 +1,20 @@
+node_modules
+.svelte-kit
+build
+.DS_Store
+# Exclude local env files but allow production env
+.env.local
+.env.*.local
+*.log
+.git
+.gitignore
+.yarn/cache
+.yarn/install-state.gz
+# Documentation files (optional, comment out if needed in image)
+CONTRIBUTING.md
+CHANGELOG.md
+ARCHITECTURE.md
+DEPLOYMENT.md
+DOCKER_GUIDE.md
+DOCKER_QUICKSTART.md
+QUICK_REFERENCE.md
