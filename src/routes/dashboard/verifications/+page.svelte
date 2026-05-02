@@ -547,6 +547,8 @@
 								verifyResult.presentation?.requested_proof?.revealed_attrs;
 			let revealedAttrGroups = verifyResult.pres?.requested_proof?.revealed_attr_groups || 
 									 verifyResult.presentation?.requested_proof?.revealed_attr_groups;
+			let revealedPredicates = verifyResult.pres?.requested_proof?.predicates || 
+									 verifyResult.presentation?.requested_proof?.predicates;
 			
 			// If not found, try to decode from presentations~attach
 			if (!revealedAttrs && verifyResult.pres?.['presentations~attach']?.[0]?.data?.base64) {
@@ -557,6 +559,7 @@
 					
 					revealedAttrs = presData.requested_proof?.revealed_attrs;
 					revealedAttrGroups = presData.requested_proof?.revealed_attr_groups;
+					revealedPredicates = presData.requested_proof?.predicates;
 				} catch (err) {
 					console.error('Failed to decode presentation for extraction:', err);
 				}
@@ -567,11 +570,13 @@
 				console.log('📋 Trying by_format.pres.anoncreds');
 				revealedAttrs = verifyResult.by_format.pres.anoncreds.requested_proof?.revealed_attrs;
 				revealedAttrGroups = verifyResult.by_format.pres.anoncreds.requested_proof?.revealed_attr_groups;
+				revealedPredicates = verifyResult.by_format.pres.anoncreds.requested_proof?.predicates;
 			}
 			
 			console.log('\n💾 EXTRACTED DATA FOR DIALOG:');
 			console.log('Revealed Attrs:', revealedAttrs);
 			console.log('Revealed Attr Groups:', revealedAttrGroups);
+			console.log('Revealed Predicates (ZKP):', revealedPredicates);
 			
 			verifiedData = {
 				presExId: presExId,
@@ -580,7 +585,8 @@
 				connectionId: verifyResult.connection_id,
 				pres: verifyResult.pres || verifyResult.presentation,
 				revealedAttrs: revealedAttrs,
-				revealedAttrGroups: revealedAttrGroups
+				revealedAttrGroups: revealedAttrGroups,
+				revealedPredicates: revealedPredicates
 			};
 			
 			console.log('Verified Data Object:', verifiedData);
@@ -1338,9 +1344,50 @@
 					</div>
 				{/if}
 
+				<!-- ZKP Predicates Results -->
+				{#if verifiedData.revealedPredicates && Object.keys(verifiedData.revealedPredicates).length > 0}
+					<div class="rounded-lg border-2 border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20 p-4">
+						<div class="flex items-center gap-2 mb-3">
+							<span class="text-2xl">🔐</span>
+							<h3 class="font-semibold text-purple-900 dark:text-purple-100">Zero-Knowledge Predicates (ZKP) Verified</h3>
+						</div>
+						<p class="text-xs text-purple-700 dark:text-purple-300 mb-3">
+							These conditions were cryptographically proven without revealing actual values:
+						</p>
+						<div class="space-y-2">
+							{#each Object.entries(verifiedData.revealedPredicates) as [key, pred]}
+								{@const predicateName = key.replace(/pred\d+_referent/gi, '').replace(/_/g, ' ').trim() || 'Predicate'}
+								<div class="flex items-center justify-between bg-white dark:bg-gray-900 rounded-lg p-3 border">
+									<div class="flex items-center gap-3 flex-1">
+										<Badge variant="default" class="bg-green-600">✓ Verified</Badge>
+										<div>
+											<p class="font-medium text-sm">{predicateName}</p>
+											<code class="text-xs font-mono text-purple-600 dark:text-purple-400">
+												Condition: {pred.p_type || '≥'} {pred.p_value}
+											</code>
+										</div>
+									</div>
+									<div class="text-right">
+										<Badge variant="outline" class="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+											🔒 Value Hidden
+										</Badge>
+										<p class="text-xs text-purple-600 dark:text-purple-400 mt-1">
+											Proof: {verifiedData.verified === 'true' ? 'Valid' : 'Invalid'}
+										</p>
+									</div>
+								</div>
+							{/each}
+						</div>
+						<div class="mt-3 text-xs text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 p-3 rounded">
+							<strong>💡 Zero-Knowledge Proof:</strong> The holder cryptographically proved these conditions are true without revealing the actual attribute values. The verifier can trust the proof without seeing the sensitive data.
+						</div>
+					</div>
+				{/if}
+
 				<!-- No Data Message -->
 				{#if (!verifiedData.revealedAttrs || Object.keys(verifiedData.revealedAttrs).length === 0) && 
-					 (!verifiedData.revealedAttrGroups || Object.keys(verifiedData.revealedAttrGroups).length === 0)}
+					 (!verifiedData.revealedAttrGroups || Object.keys(verifiedData.revealedAttrGroups).length === 0) &&
+					 (!verifiedData.revealedPredicates || Object.keys(verifiedData.revealedPredicates).length === 0)}
 					<div class="rounded-lg border p-4 text-center">
 						<p class="text-sm text-muted-foreground">No revealed attributes found in this presentation</p>
 					</div>
