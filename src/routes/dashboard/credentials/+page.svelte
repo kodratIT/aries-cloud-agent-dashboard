@@ -1984,13 +1984,9 @@
 								{@const credReferent = cred.cred_info?.referent || cred.referent}
 								{@const credAttrs = cred.cred_info?.attrs || {}}
 								{@const schemaId = cred.cred_info?.schema_id || 'Unknown'}
+								{@const isSelected = selectedCredentialForProof === credReferent}
 								<label 
-									class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
-									class:bg-blue-50={selectedCredentialForProof === credReferent}
-									class:dark:bg-blue-900/20={selectedCredentialForProof === credReferent}
-									class:border-blue-500={selectedCredentialForProof === credReferent}
-									class:hover:bg-gray-50={selectedCredentialForProof !== credReferent}
-									class:dark:hover:bg-gray-800={selectedCredentialForProof !== credReferent}
+									class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors {isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}"
 								>
 									<input
 										type="radio"
