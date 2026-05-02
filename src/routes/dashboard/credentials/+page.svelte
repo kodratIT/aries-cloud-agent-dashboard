@@ -290,30 +290,94 @@
 
 		sendingPresentation = true;
 		try {
-			// Build presentation request body
-			// This is simplified - in production, you'd need to map requested attributes properly
+			console.log('🔐 ===== SENDING PRESENTATION =====');
+			console.log('Selected credential ID:', selectedCredentialForProof);
+			console.log('Proof request:', selectedProofRequest);
+			
+			// Find the selected credential from matching credentials
+			const selectedCred = matchingCredentials.find(c => 
+				c.cred_info?.referent === selectedCredentialForProof ||
+				c.cred_info?.cred_def_id === selectedCredentialForProof
+			);
+			
+			if (!selectedCred) {
+				throw new Error('Selected credential not found in matching credentials');
+			}
+			
+			console.log('Selected credential object:', selectedCred);
+			console.log('Credential info:', selectedCred.cred_info);
+			
+			// Build presentation request body with proper attribute mapping
 			const requestedAttributes: Record<string, any> = {};
+			const requestedPredicates: Record<string, any> = {};
 			
 			// Get requested attributes from proof request
 			const presRequest = selectedProofRequest.pres_request || selectedProofRequest.pres;
-			if (presRequest?.requested_attributes) {
-				Object.keys(presRequest.requested_attributes).forEach(key => {
+			
+			// Extract presentation request from base64 if needed
+			let actualPresRequest = presRequest;
+			if (presRequest?.['request_presentations~attach']) {
+				try {
+					const attach = presRequest['request_presentations~attach'][0];
+					if (attach?.data?.base64) {
+						const decoded = JSON.parse(atob(attach.data.base64));
+						actualPresRequest = decoded;
+						console.log('Decoded presentation request:', actualPresRequest);
+					}
+				} catch (e) {
+					console.error('Failed to decode presentation request:', e);
+				}
+			}
+			
+			console.log('Actual presentation request:', actualPresRequest);
+			
+			// Map requested attributes to the selected credential
+			if (actualPresRequest?.requested_attributes) {
+				console.log('Requested attributes:', actualPresRequest.requested_attributes);
+				
+				Object.entries(actualPresRequest.requested_attributes).forEach(([key, attrReq]: [string, any]) => {
+					console.log(`Mapping attribute ${key}:`, attrReq);
+					
+					// Use the credential referent (the actual credential ID)
+					const credReferent = selectedCred.cred_info?.referent || selectedCredentialForProof;
+					
 					requestedAttributes[key] = {
-						cred_id: selectedCredentialForProof,
+						cred_id: credReferent,
 						revealed: true
 					};
+					
+					console.log(`  → Mapped to cred_id: ${credReferent}`);
+				});
+			}
+			
+			// Map requested predicates (ZKP) to the selected credential
+			if (actualPresRequest?.requested_predicates) {
+				console.log('Requested predicates:', actualPresRequest.requested_predicates);
+				
+				Object.entries(actualPresRequest.requested_predicates).forEach(([key, predReq]: [string, any]) => {
+					console.log(`Mapping predicate ${key}:`, predReq);
+					
+					// Use the credential referent
+					const credReferent = selectedCred.cred_info?.referent || selectedCredentialForProof;
+					
+					requestedPredicates[key] = {
+						cred_id: credReferent
+					};
+					
+					console.log(`  → Mapped to cred_id: ${credReferent}`);
 				});
 			}
 
 			const presentationBody = {
 				anoncreds: {
 					requested_attributes: requestedAttributes,
-					requested_predicates: {},
+					requested_predicates: requestedPredicates,
 					self_attested_attributes: {}
 				}
 			};
 
-			console.log('Sending presentation:', presentationBody);
+			console.log('📤 Final presentation body:', JSON.stringify(presentationBody, null, 2));
+			
 			await acapyClient.sendPresentation(
 				selectedProofRequest.pres_ex_id,
 				authStore.token!,
@@ -324,7 +388,7 @@
 			showProofRequestDialog = false;
 			await loadProofRequests();
 		} catch (err: any) {
-			console.error('Failed to send presentation:', err);
+			console.error('❌ Failed to send presentation:', err);
 			toast.error('Failed to send presentation', {
 				description: err.message || 'Unknown error'
 			});
@@ -1912,18 +1976,61 @@
 							<p class="text-xs text-gray-400 mt-1">You don't have credentials that match this request</p>
 						</div>
 					{:else}
-						<select
-							bind:value={selectedCredentialForProof}
-							class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-							disabled={sendingPresentation}
-						>
-							<option value="">Select a credential...</option>
-							{#each matchingCredentials as cred}
-								<option value={cred.cred_info?.referent || cred.referent}>
-									Credential - {cred.cred_info?.schema_id || 'Unknown'}
-								</option>
+						<div class="space-y-2">
+							<p class="text-xs text-gray-500 mb-2">
+								Found {matchingCredentials.length} matching credential{matchingCredentials.length > 1 ? 's' : ''}. Select the one you want to use:
+							</p>
+							{#each matchingCredentials as cred, index}
+								{@const credReferent = cred.cred_info?.referent || cred.referent}
+								{@const credAttrs = cred.cred_info?.attrs || {}}
+								{@const schemaId = cred.cred_info?.schema_id || 'Unknown'}
+								<label 
+									class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+									class:bg-blue-50={selectedCredentialForProof === credReferent}
+									class:dark:bg-blue-900/20={selectedCredentialForProof === credReferent}
+									class:border-blue-500={selectedCredentialForProof === credReferent}
+									class:hover:bg-gray-50={selectedCredentialForProof !== credReferent}
+									class:dark:hover:bg-gray-800={selectedCredentialForProof !== credReferent}
+								>
+									<input
+										type="radio"
+										name="credential"
+										value={credReferent}
+										bind:group={selectedCredentialForProof}
+										class="mt-1 h-4 w-4"
+										disabled={sendingPresentation}
+									/>
+									<div class="flex-1">
+										<div class="flex items-center gap-2 mb-1">
+											<span class="font-medium text-sm">Credential #{index + 1}</span>
+											<Badge variant="outline" class="text-xs">
+												{schemaId.split(':').slice(-2).join(' v')}
+											</Badge>
+										</div>
+										{#if Object.keys(credAttrs).length > 0}
+											<div class="text-xs text-gray-600 dark:text-gray-400 space-y-1 mt-2">
+												{#each Object.entries(credAttrs).slice(0, 3) as [attrName, attrValue]}
+													<div class="flex gap-2">
+														<span class="font-medium">{attrName}:</span>
+														<span class="font-mono">{attrValue}</span>
+													</div>
+												{/each}
+												{#if Object.keys(credAttrs).length > 3}
+													<div class="text-gray-500 italic">
+														+{Object.keys(credAttrs).length - 3} more attribute{Object.keys(credAttrs).length - 3 > 1 ? 's' : ''}
+													</div>
+												{/if}
+											</div>
+										{:else}
+											<p class="text-xs text-gray-500 mt-1">No attribute preview available</p>
+										{/if}
+										<p class="text-xs text-gray-400 mt-2 font-mono">
+											ID: {credReferent.substring(0, 20)}...
+										</p>
+									</div>
+								</label>
 							{/each}
-						</select>
+						</div>
 					{/if}
 				</div>
 

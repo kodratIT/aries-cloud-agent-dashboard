@@ -40,7 +40,7 @@
 
 	// Create cred def form
 	let selectedSchemaId = $state('');
-	let tag = $state('default');
+	let tag = $state('');
 	let supportRevocation = $state(false);
 
 	// Cred def details
@@ -154,6 +154,20 @@
 			return;
 		}
 
+		// Check if tag already exists for this schema
+		const existingCredDef = credDefs.find(cd => 
+			cd.credential_definition.schemaId === selectedSchemaId && 
+			cd.credential_definition.tag === tag.trim()
+		);
+		
+		if (existingCredDef) {
+			error = `A credential definition with tag "${tag.trim()}" already exists for this schema. Please use a different tag.`;
+			toast.error('Duplicate tag', {
+				description: 'This tag is already used for this schema'
+			});
+			return;
+		}
+
 		creating = true;
 		error = '';
 		try {
@@ -174,7 +188,7 @@
 
 			showCreateDialog = false;
 			selectedSchemaId = '';
-			tag = 'default';
+			tag = '';
 			supportRevocation = false;
 
 			toast.success('Credential definition created successfully!');
@@ -439,14 +453,24 @@
 				<Input
 					id="tag"
 					type="text"
-					placeholder="default"
+					placeholder="e.g., default, v1, premium, employee-2024"
 					bind:value={tag}
 					disabled={creating}
 					required
 				/>
 				<p class="text-xs text-gray-500">
-					A tag to identify this credential definition (e.g., "default", "v1", "premium")
+					A unique tag to identify this credential definition. Each tag creates a separate credential definition.
 				</p>
+				{#if selectedSchemaId}
+					{@const existingTags = credDefs
+						.filter(cd => cd.credential_definition.schemaId === selectedSchemaId)
+						.map(cd => cd.credential_definition.tag)}
+					{#if existingTags.length > 0}
+						<p class="text-xs text-yellow-600 dark:text-yellow-400">
+							⚠️ Existing tags for this schema: {existingTags.join(', ')}
+						</p>
+					{/if}
+				{/if}
 			</div>
 
 			<div class="flex items-center space-x-2">
