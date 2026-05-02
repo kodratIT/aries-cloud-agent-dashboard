@@ -12,8 +12,11 @@
 	let loading = $state(true);
 	let invitation = $state<any>(null);
 	let showInvitation = $state(false);
+	let showCreateDialog = $state(false);
 	let creatingInvitation = $state(false);
 	let qrCodeDataUrl = $state<string>('');
+	let connectionLabel = $state('');
+	let connectionNote = $state('');
 	let processingConnectionId = $state<string | null>(null);
 	let showRejectDialog = $state(false);
 	let connectionToReject = $state<Connection | null>(null);
@@ -42,12 +45,30 @@
 		}
 	}
 
+	function openCreateDialog() {
+		connectionLabel = '';
+		connectionNote = '';
+		showCreateDialog = true;
+	}
+
 	async function createInvitation() {
 		if (!authStore.token) return;
 
+		// Validation
+		if (!connectionLabel.trim()) {
+			alert('Please enter a connection label');
+			return;
+		}
+
 		creatingInvitation = true;
 		try {
-			invitation = await acapyClient.createInvitation(authStore.token);
+			// Create invitation with custom label
+			const invitationData = {
+				alias: connectionLabel.trim(),
+				my_label: connectionLabel.trim()
+			};
+			
+			invitation = await acapyClient.createInvitation(authStore.token, invitationData);
 			
 			// Generate QR code
 			if (invitation?.invitation_url) {
@@ -61,6 +82,7 @@
 				});
 			}
 			
+			showCreateDialog = false;
 			showInvitation = true;
 		} catch (error) {
 			console.error('Failed to create invitation:', error);
@@ -189,10 +211,79 @@
 			<h1 class="text-3xl font-bold">Connections</h1>
 			<p class="text-gray-500 dark:text-gray-400">Manage your agent-to-agent connections</p>
 		</div>
-		<Button onclick={createInvitation} disabled={creatingInvitation}>
-			{creatingInvitation ? 'Creating...' : '➕ Create Invitation'}
+		<Button onclick={openCreateDialog}>
+			➕ Create Invitation
 		</Button>
 	</div>
+
+	<!-- Create Connection Dialog -->
+	<Dialog open={showCreateDialog} onOpenChange={(open) => showCreateDialog = open}>
+		<DialogContent class="max-w-md">
+			<DialogHeader>
+				<DialogTitle>Create New Connection</DialogTitle>
+				<DialogDescription>Enter details for this connection invitation</DialogDescription>
+			</DialogHeader>
+			<form onsubmit={(e) => { e.preventDefault(); createInvitation(); }} class="space-y-4">
+				<div class="space-y-2">
+					<label for="label" class="text-sm font-medium">
+						Connection Label *
+					</label>
+					<input
+						id="label"
+						type="text"
+						bind:value={connectionLabel}
+						placeholder="e.g., John Doe, Company ABC, Mobile Wallet"
+						class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						disabled={creatingInvitation}
+						required
+					/>
+					<p class="text-xs text-gray-500">
+						Give this connection a meaningful name so you can identify it later
+					</p>
+				</div>
+
+				<div class="space-y-2">
+					<label for="note" class="text-sm font-medium">
+						Note (Optional)
+					</label>
+					<textarea
+						id="note"
+						bind:value={connectionNote}
+						placeholder="e.g., Connection for credential issuance, Verification partner"
+						class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						disabled={creatingInvitation}
+					></textarea>
+					<p class="text-xs text-gray-500">
+						Add any additional notes about this connection (for your reference only)
+					</p>
+				</div>
+
+				<div class="rounded-lg bg-blue-50 p-3 text-sm dark:bg-blue-900/20">
+					<p class="font-medium text-blue-900 dark:text-blue-100">💡 Tip:</p>
+					<p class="mt-1 text-blue-800 dark:text-blue-200">
+						Use descriptive labels like "Alice - Mobile Wallet" or "Company XYZ - HR Department" to easily identify connections later.
+					</p>
+				</div>
+
+				<div class="flex justify-end gap-2">
+					<Button 
+						type="button"
+						variant="outline" 
+						onclick={() => showCreateDialog = false}
+						disabled={creatingInvitation}
+					>
+						Cancel
+					</Button>
+					<Button 
+						type="submit"
+						disabled={creatingInvitation || !connectionLabel.trim()}
+					>
+						{creatingInvitation ? 'Creating...' : '✓ Create Invitation'}
+					</Button>
+				</div>
+			</form>
+		</DialogContent>
+	</Dialog>
 
 	<!-- Reject Confirmation Dialog -->
 	{#if showRejectDialog && connectionToReject}
@@ -364,9 +455,24 @@
 			<DialogContent class="max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>Connection Invitation Created</DialogTitle>
-					<DialogDescription>Share this invitation with others to establish a connection</DialogDescription>
+					<DialogDescription>Share this invitation to establish a connection</DialogDescription>
 				</DialogHeader>
 				<div class="space-y-4">
+					<!-- Connection Info -->
+					<div class="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
+						<div class="flex items-start gap-3">
+							<div class="text-2xl">🔗</div>
+							<div class="flex-1">
+								<p class="font-semibold text-blue-900 dark:text-blue-100">Connection Label:</p>
+								<p class="text-lg font-medium text-blue-800 dark:text-blue-200">{connectionLabel}</p>
+								{#if connectionNote}
+									<p class="mt-2 text-sm text-blue-700 dark:text-blue-300">
+										<span class="font-medium">Note:</span> {connectionNote}
+									</p>
+								{/if}
+							</div>
+						</div>
+					</div>
 					<!-- QR Code Display -->
 					{#if qrCodeDataUrl}
 						<div class="flex justify-center">
