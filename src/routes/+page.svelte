@@ -61,7 +61,7 @@
 			icon: Shield,
 			title: 'Proof Verification',
 			description: 'Request and verify credential proofs from holders',
-			items: ['Custom proof requests', 'Attribute verification', 'Predicate support'],
+			items: ['Custom proof requests', 'Attribute verification', 'Zero-Knowledge Predicates (ZKP)', 'Range proofs without revealing values'],
 			gradient: 'from-green-500 to-emerald-500'
 		},
 		{

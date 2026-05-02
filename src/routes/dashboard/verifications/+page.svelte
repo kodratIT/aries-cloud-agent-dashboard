@@ -61,6 +61,16 @@
 	let proofRequestName = $state('');
 	let proofRequestComment = $state('');
 
+	// ZKP Predicates support
+	interface Predicate {
+		id: string;
+		attribute: string;
+		operator: '>=' | '>' | '<=' | '<';
+		value: number;
+	}
+	let predicates = $state<Predicate[]>([]);
+	let showPredicateSection = $state(false);
+
 	// Details dialog
 	let selectedPresentation = $state<PresentationRecord | null>(null);
 	let showDetailsDialog = $state(false);
@@ -216,10 +226,32 @@
 		selectedConnectionId = '';
 		selectedCredDefId = '';
 		selectedAttributes = [];
+		predicates = [];
+		showPredicateSection = false;
 		proofRequestName = 'Proof Request';
 		proofRequestComment = '';
 		error = '';
 		showCreateDialog = true;
+	}
+
+	// ZKP Predicate functions
+	function addPredicate() {
+		predicates = [...predicates, {
+			id: crypto.randomUUID(),
+			attribute: '',
+			operator: '>=',
+			value: 0
+		}];
+	}
+
+	function removePredicate(id: string) {
+		predicates = predicates.filter(p => p.id !== id);
+	}
+
+	function updatePredicate(id: string, field: keyof Predicate, value: any) {
+		predicates = predicates.map(p => 
+			p.id === id ? { ...p, [field]: value } : p
+		);
 	}
 
 	function onCredDefChange() {
@@ -263,9 +295,21 @@
 			return;
 		}
 
-		if (selectedAttributes.length === 0) {
-			error = 'Please select at least one attribute';
+		if (selectedAttributes.length === 0 && predicates.length === 0) {
+			error = 'Please select at least one attribute or add a predicate';
 			return;
+		}
+
+		// Validate predicates
+		for (const pred of predicates) {
+			if (!pred.attribute) {
+				error = 'Please select an attribute for all predicates';
+				return;
+			}
+			if (pred.value === null || pred.value === undefined) {
+				error = 'Please enter a value for all predicates';
+				return;
+			}
 		}
 
 		creating = true;
@@ -284,6 +328,21 @@
 				};
 			});
 
+			// Build requested_predicates (ZKP)
+			const requested_predicates: Record<string, any> = {};
+			predicates.forEach((pred, index) => {
+				requested_predicates[`pred${index}_referent`] = {
+					name: pred.attribute,
+					p_type: pred.operator,
+					p_value: pred.value,
+					restrictions: [
+						{
+							cred_def_id: selectedCredDefId
+						}
+					]
+				};
+			});
+
 			const requestBody = {
 				connection_id: selectedConnectionId,
 				comment: proofRequestComment || 'Please provide the requested credentials',
@@ -292,17 +351,21 @@
 						name: proofRequestName || 'Proof Request',
 						version: '1.0',
 						requested_attributes,
-						requested_predicates: {}
+						requested_predicates
 					}
 				}
 			};
 
-			console.log('Sending proof request:', requestBody);
+			console.log('🔐 Sending ZKP proof request:', requestBody);
+			console.log('📊 Attributes requested:', Object.keys(requested_attributes).length);
+			console.log('🎯 Predicates (ZKP):', Object.keys(requested_predicates).length);
 			const result = await acapyClient.sendProofRequest(authStore.token, requestBody);
-			console.log('Proof request sent:', result);
+			console.log('✅ Proof request sent:', result);
 
 			showCreateDialog = false;
-			toast.success('Proof request sent successfully!');
+			toast.success('Proof request sent successfully!', {
+				description: predicates.length > 0 ? `With ${predicates.length} ZKP predicate(s)` : undefined
+			});
 			await loadPresentations();
 		} catch (err: any) {
 			console.error('Failed to send proof request:', err);
@@ -878,10 +941,11 @@
 			</div>
 
 			{#if selectedSchema}
+				<!-- Attributes Section -->
 				<div class="space-y-2 rounded-lg border p-4">
-					<Label>Select Attributes to Request *</Label>
+					<Label>Select Attributes to Request</Label>
 					<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-						Choose which attributes you want the holder to prove
+						Choose which attributes you want the holder to reveal
 					</p>
 					<div class="space-y-2">
 						{#each selectedSchema.schema.attrNames as attr}
@@ -904,6 +968,118 @@
 							</label>
 						{/each}
 					</div>
+				</div>
+
+				<!-- ZKP Predicates Section -->
+				<div class="space-y-3 rounded-lg border-2 border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20 p-4">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<span class="text-2xl">🔐</span>
+							<div>
+								<Label class="text-purple-900 dark:text-purple-100">Zero-Knowledge Predicates (ZKP)</Label>
+								<p class="text-xs text-purple-700 dark:text-purple-300 mt-1">
+									Prove conditions without revealing actual values (e.g., age ≥ 18)
+								</p>
+							</div>
+						</div>
+						<Button 
+							type="button" 
+							variant="outline" 
+							size="sm"
+							onclick={() => showPredicateSection = !showPredicateSection}
+							disabled={creating}
+						>
+							{showPredicateSection ? '▼ Hide' : '▶ Show'}
+						</Button>
+					</div>
+
+					{#if showPredicateSection}
+						<div class="space-y-3 pt-2">
+							{#if predicates.length === 0}
+								<div class="text-center py-4 text-sm text-purple-600 dark:text-purple-400">
+									No predicates added yet. Click "Add Predicate" to create ZKP conditions.
+								</div>
+							{/if}
+
+							{#each predicates as predicate (predicate.id)}
+								<div class="flex items-end gap-2 p-3 rounded-lg bg-white dark:bg-gray-900 border">
+									<div class="flex-1 space-y-2">
+										<Label class="text-xs">Attribute</Label>
+										<select
+											value={predicate.attribute}
+											onchange={(e) => updatePredicate(predicate.id, 'attribute', e.currentTarget.value)}
+											class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+											disabled={creating}
+										>
+											<option value="">Select attribute...</option>
+											{#each selectedSchema.schema.attrNames as attr}
+												<option value={attr}>{attr}</option>
+											{/each}
+										</select>
+									</div>
+
+									<div class="w-32 space-y-2">
+										<Label class="text-xs">Operator</Label>
+										<select
+											value={predicate.operator}
+											onchange={(e) => updatePredicate(predicate.id, 'operator', e.currentTarget.value)}
+											class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+											disabled={creating}
+										>
+											<option value=">=">≥ (greater or equal)</option>
+											<option value=">">{'>'} (greater than)</option>
+											<option value="<=">≤ (less or equal)</option>
+											<option value="<">{'<'} (less than)</option>
+										</select>
+									</div>
+
+									<div class="w-32 space-y-2">
+										<Label class="text-xs">Value</Label>
+										<Input
+											type="number"
+											value={predicate.value}
+											onchange={(e) => updatePredicate(predicate.id, 'value', Number(e.currentTarget.value))}
+											class="h-9"
+											placeholder="18"
+											disabled={creating}
+										/>
+									</div>
+
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
+										onclick={() => removePredicate(predicate.id)}
+										disabled={creating}
+										class="h-9"
+									>
+										🗑️
+									</Button>
+								</div>
+							{/each}
+
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onclick={addPredicate}
+								disabled={creating}
+								class="w-full border-dashed border-2 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+							>
+								➕ Add Predicate
+							</Button>
+
+							<div class="text-xs text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 p-3 rounded">
+								<strong>💡 Examples:</strong>
+								<ul class="mt-2 space-y-1 ml-4 list-disc">
+									<li><code>age ≥ 18</code> - Prove age is 18 or older without revealing exact age</li>
+									<li><code>salary {'>'} 50000</code> - Prove salary above threshold</li>
+									<li><code>score ≥ 700</code> - Prove credit score meets minimum</li>
+									<li><code>gpa ≥ 3.0</code> - Prove GPA meets requirement</li>
+								</ul>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -939,8 +1115,8 @@
 				<Button type="button" variant="outline" onclick={() => showCreateDialog = false} disabled={creating}>
 					Cancel
 				</Button>
-				<Button type="submit" disabled={creating || !selectedConnectionId || !selectedCredDefId || selectedAttributes.length === 0}>
-					{creating ? 'Sending...' : 'Send Proof Request'}
+				<Button type="submit" disabled={creating || !selectedConnectionId || !selectedCredDefId || (selectedAttributes.length === 0 && predicates.length === 0)}>
+					{creating ? 'Sending...' : predicates.length > 0 ? `🔐 Send with ${predicates.length} ZKP Predicate(s)` : 'Send Proof Request'}
 				</Button>
 			</div>
 		</form>
@@ -994,6 +1170,8 @@
 					<!-- Presentation Data -->
 					{#if presentationDetail.presentation?.requested_proof || presentationDetail.pres?.requested_proof}
 						{@const requestedProof = presentationDetail.presentation?.requested_proof || presentationDetail.pres?.requested_proof}
+						
+						<!-- Revealed Attributes -->
 						<div class="rounded-lg border p-4">
 							<h3 class="mb-3 font-semibold">Revealed Attributes</h3>
 							
@@ -1026,6 +1204,37 @@
 								<p class="text-sm text-muted-foreground">No revealed attributes found</p>
 							{/if}
 						</div>
+
+						<!-- ZKP Predicates Results -->
+						{#if requestedProof.predicates && Object.keys(requestedProof.predicates).length > 0}
+							<div class="rounded-lg border-2 border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20 p-4">
+								<div class="flex items-center gap-2 mb-3">
+									<span class="text-2xl">🔐</span>
+									<h3 class="font-semibold text-purple-900 dark:text-purple-100">Zero-Knowledge Predicates Verified</h3>
+								</div>
+								<p class="text-xs text-purple-700 dark:text-purple-300 mb-3">
+									These conditions were proven without revealing actual values:
+								</p>
+								<div class="space-y-2">
+									{#each Object.entries(requestedProof.predicates) as [key, pred]}
+										<div class="flex items-center justify-between bg-white dark:bg-gray-900 rounded-lg p-3 border">
+											<div class="flex items-center gap-2">
+												<Badge variant="default" class="bg-purple-600">✓ Verified</Badge>
+												<code class="text-sm font-mono">
+													{pred.name || key} {pred.p_type || '≥'} {pred.p_value}
+												</code>
+											</div>
+											<span class="text-xs text-purple-600 dark:text-purple-400">
+												🔒 Value not revealed
+											</span>
+										</div>
+									{/each}
+								</div>
+								<div class="mt-3 text-xs text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 p-2 rounded">
+									💡 <strong>Zero-Knowledge Proof:</strong> The holder proved these conditions are true without revealing the actual values.
+								</div>
+							</div>
+						{/if}
 					{:else}
 						<div class="rounded-lg border p-4">
 							<h3 class="mb-3 font-semibold">Presentation Data</h3>
