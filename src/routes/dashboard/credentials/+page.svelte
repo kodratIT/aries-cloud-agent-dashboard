@@ -273,8 +273,51 @@
 				proofRequest.pres_ex_id,
 				authStore.token!
 			);
-			console.log('Matching credentials:', response);
-			matchingCredentials = response || [];
+			console.log('📋 ===== MATCHING CREDENTIALS DEBUG =====');
+			console.log('Raw response:', response);
+			console.log('Response type:', typeof response);
+			console.log('Response keys:', Object.keys(response || {}));
+			
+			// Check if response is array or has results
+			let credentialsList = [];
+			if (Array.isArray(response)) {
+				credentialsList = response;
+			} else if (response?.results) {
+				credentialsList = response.results;
+			} else if (response) {
+				credentialsList = [response];
+			}
+			
+			console.log('Credentials list:', credentialsList);
+			console.log('Credentials count:', credentialsList.length);
+			
+			// Log each credential structure
+			credentialsList.forEach((cred: any, index: number) => {
+				console.log(`\n--- Credential ${index + 1} ---`);
+				console.log('Full credential object:', JSON.parse(JSON.stringify(cred)));
+				console.log('Keys:', Object.keys(cred));
+				
+				if (cred.cred_info) {
+					console.log('  cred_info exists');
+					console.log('  cred_info keys:', Object.keys(cred.cred_info));
+					console.log('  cred_info.attrs:', cred.cred_info.attrs);
+					console.log('  cred_info.referent:', cred.cred_info.referent);
+					console.log('  cred_info.schema_id:', cred.cred_info.schema_id);
+				}
+				
+				// Check alternative paths for attributes
+				if (cred.attrs) {
+					console.log('  attrs (direct):', cred.attrs);
+				}
+				if (cred.credential) {
+					console.log('  credential object exists');
+					if (cred.credential.attrs) {
+						console.log('  credential.attrs:', cred.credential.attrs);
+					}
+				}
+			});
+			
+			matchingCredentials = credentialsList;
 		} catch (err: any) {
 			console.error('Failed to load matching credentials:', err);
 			toast.error('Failed to load matching credentials', {
@@ -1982,8 +2025,8 @@
 							</p>
 							{#each matchingCredentials as cred, index}
 								{@const credReferent = cred.cred_info?.referent || cred.referent}
-								{@const credAttrs = cred.cred_info?.attrs || {}}
-								{@const schemaId = cred.cred_info?.schema_id || 'Unknown'}
+								{@const credAttrs = cred.cred_info?.attrs || cred.attrs || cred.credential?.attrs || {}}
+								{@const schemaId = cred.cred_info?.schema_id || cred.schema_id || 'Unknown'}
 								{@const isSelected = selectedCredentialForProof === credReferent}
 								<label 
 									class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors {isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}"
@@ -2005,20 +2048,20 @@
 										</div>
 										{#if Object.keys(credAttrs).length > 0}
 											<div class="text-xs text-gray-600 dark:text-gray-400 space-y-1 mt-2">
-												{#each Object.entries(credAttrs).slice(0, 3) as [attrName, attrValue]}
-													<div class="flex gap-2">
-														<span class="font-medium">{attrName}:</span>
-														<span class="font-mono">{attrValue}</span>
+												<p class="font-semibold text-gray-700 dark:text-gray-300 mb-1">
+													Attributes ({Object.keys(credAttrs).length}):
+												</p>
+												{#each Object.entries(credAttrs) as [attrName, attrValue]}
+													<div class="flex gap-2 py-0.5">
+														<span class="font-medium min-w-[80px]">{attrName}:</span>
+														<span class="font-mono flex-1">{attrValue}</span>
 													</div>
 												{/each}
-												{#if Object.keys(credAttrs).length > 3}
-													<div class="text-gray-500 italic">
-														+{Object.keys(credAttrs).length - 3} more attribute{Object.keys(credAttrs).length - 3 > 1 ? 's' : ''}
-													</div>
-												{/if}
 											</div>
 										{:else}
-											<p class="text-xs text-gray-500 mt-1">No attribute preview available</p>
+											<div class="text-xs text-yellow-600 dark:text-yellow-400 mt-2 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded">
+												⚠️ No attribute preview available. Check console for credential structure.
+											</div>
 										{/if}
 										<p class="text-xs text-gray-400 mt-2 font-mono">
 											ID: {credReferent.substring(0, 20)}...
